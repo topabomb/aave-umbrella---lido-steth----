@@ -1,0 +1,5 @@
+{
+  "name": "Aave Umbrella 及 Lido Steth资产追踪",
+  "description": "A dashboard to analyze Aave Safety Module (Umbrella) staking rewards using Gemini Search for real-time APY data and projected earnings calculation.",
+  "requestFramePermissions": []
+}
