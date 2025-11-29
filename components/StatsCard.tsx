@@ -13,11 +13,11 @@ interface StatsCardProps {
 
 const StatsCard: React.FC<StatsCardProps> = ({ title, value, subValue, icon: Icon, color = "text-aave-secondary", className }) => {
   return (
-    <div className={`bg-aave-card border border-gray-700/50 rounded-xl p-5 flex items-center justify-between shadow-lg hover:border-aave-secondary/30 transition-all duration-300 ${className}`}>
-      <div className="overflow-hidden min-w-0">
-        <p className="text-aave-muted text-xs font-medium mb-1 uppercase tracking-wider truncate">{title}</p>
-        <h3 className="text-xl font-bold text-white truncate" title={String(value)}>{value}</h3>
-        {subValue && <p className="text-[10px] text-gray-400 mt-1 truncate">{subValue}</p>}
+    <div className={`bg-aave-card border border-gray-700/50 rounded-xl p-3 sm:p-5 flex items-center justify-between shadow-lg hover:border-aave-secondary/30 transition-all duration-300 ${className}`}>
+      <div className="flex-1 min-w-0">
+        <p className="text-aave-muted text-xs font-medium mb-1 uppercase tracking-wider whitespace-normal">{title}</p>
+        <h3 className="text-lg sm:text-xl font-bold text-white whitespace-normal break-words" title={String(value)}>{value}</h3>
+        {subValue && <p className="text-[10px] text-gray-400 mt-1 whitespace-normal">{subValue}</p>}
       </div>
       <div className={`p-2.5 rounded-full bg-opacity-10 bg-gray-600 shrink-0 ml-3 ${color}`}>
         <Icon size={20} />

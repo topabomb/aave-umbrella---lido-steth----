@@ -181,7 +181,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main id="top-section" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4">
+      <main id="top-section" className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-2 space-y-2 sm:py-4 sm:space-y-4">
         
         {/* Search Section */}
         <section className="bg-aave-card p-6 rounded-2xl border border-gray-700 shadow-2xl relative overflow-hidden">
@@ -260,7 +260,7 @@ const App: React.FC = () => {
                     <Layers className="text-aave-secondary" />
                     质押汇总 (Staked Assets)
                 </h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
                     <div className="flex flex-col">
                         <span className="text-gray-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2">
                             <DollarSign size={12} className="text-aave-secondary" /> 总持仓价值
@@ -305,7 +305,7 @@ const App: React.FC = () => {
                         <Droplets className="text-blue-400" />
                         Lido (stETH) 汇总
                     </h3>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm">
                         <StatsCard title="持仓价值" value={`$${lidoSummary.totalValueUSD.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={DollarSign} color="text-blue-400" />
                         <StatsCard title="加权 APY" value={`${(lidoSummary.avgAPY * 100).toFixed(2)}%`} icon={PieChart} color="text-blue-400" />
                         <StatsCard title="区间收益" value={`$${lidoSummary.totalPeriodEarningsUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} icon={TrendingUp} color="text-purple-400" />
@@ -321,7 +321,7 @@ const App: React.FC = () => {
                         <ShieldCheck className="text-aave-primary" />
                         Aave Umbrella 汇总
                     </h3>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm">
                         <StatsCard title="总持仓价值" value={`$${umbrellaSummary.totalValueUSD.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} subValue={`${umbrellaSummary.assetCount} 个资产`} icon={DollarSign} color="text-aave-secondary" />
                         <StatsCard title="加权 APY" value={`${(umbrellaSummary.avgAPY * 100).toFixed(2)}%`} icon={PieChart} color="text-aave-primary" />
                         <StatsCard title="总区间收益" value={`$${umbrellaSummary.totalPeriodEarningsUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} icon={TrendingUp} color="text-purple-400" />

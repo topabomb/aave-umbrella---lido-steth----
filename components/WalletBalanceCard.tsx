@@ -46,19 +46,19 @@ const WalletBalanceCard: React.FC<WalletBalanceCardProps> = ({ data }) => {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
         {data.balances.map((token) => (
-          <div key={token.symbol} className="flex justify-between items-center text-sm p-2 rounded-md bg-gray-800/30 hover:bg-gray-800/60">
-            <div className="flex items-center">
+          <div key={token.symbol} className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm p-2 rounded-md bg-gray-800/30 hover:bg-gray-800/60">
+            <div className="flex items-center mb-1 sm:mb-0">
               <TokenIcon symbol={token.symbol} />
               <div className="flex flex-col">
-                <span className="font-bold text-white">{token.symbol}</span>
-                <span className="text-xs text-gray-400 font-mono">
+                <span className="font-bold text-white text-xs sm:text-sm">{token.symbol}</span>
+                <span className="text-[10px] text-gray-400 font-mono">
                   @{token.priceUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
-            <div className="text-right">
-              <p className="font-mono text-white">{token.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
-              <p className="text-xs text-gray-500">${token.valueUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <div className="text-left sm:text-right w-full sm:w-auto pl-8 sm:pl-0">
+              <p className="font-mono text-white text-xs sm:text-sm">{token.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+              <p className="text-[10px] text-gray-500">${token.valueUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
           </div>
         ))}
