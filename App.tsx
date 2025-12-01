@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Wallet, TrendingUp, ShieldCheck, AlertCircle, Loader2, Coins, Layers, Calendar, DollarSign, Activity, PieChart, Droplets, Info, Server } from 'lucide-react';
+import { Search, Wallet, TrendingUp, ShieldCheck, AlertCircle, Loader2, Coins, Layers, Calendar, DollarSign, Activity, PieChart, Droplets, Info, Server, Eye, Flame } from 'lucide-react';
 import StatsCard from './components/StatsCard';
 import EarningsChart from './components/EarningsChart';
 import LogPanel from './components/LogPanel';
 import WalletBalanceCard from './components/WalletBalanceCard';
-import { fetchOnChainData, discoverActiveAssets, processData, fetchWalletBalances } from './services/blockchainService';
+import { fetchOnChainData, discoverActiveAssets, processData, fetchWalletBalances, fetchWatchListPrices, fetchGasAnalytics } from './services/blockchainService';
 import * as storage from './services/storageService';
 import { AnalysisResult, LogEntry, DiscoveredAsset, WalletBalances } from './types';
 import { ANALYSIS_OPTIONS } from './constants';
@@ -12,7 +12,10 @@ import { ANALYSIS_OPTIONS } from './constants';
 const App: React.FC = () => {
   const [address, setAddress] = useState(storage.getItem('userAddress') || '');
   const [rpcUrl, setRpcUrl] = useState(storage.getItem('rpcUrl') || 'https://rpc.ankr.com/eth');
-  const [days, setDays] = useState(7);
+  const [days, setDays] = useState(() => {
+      const saved = storage.getItem('analysisDays');
+      return saved ? parseInt(saved, 10) : 7;
+  });
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +23,8 @@ const App: React.FC = () => {
   const [results, setResults] = useState<Record<string, AnalysisResult>>({});
   const [discoveredAssets, setDiscoveredAssets] = useState<DiscoveredAsset[]>([]);
   const [walletBalances, setWalletBalances] = useState<WalletBalances | null>(null);
+  const [watchListPrices, setWatchListPrices] = useState<{symbol: string, price: number}[]>([]);
+  const [gasData, setGasData] = useState<{ latest: number, median: number, top20Avg: number, bottom80Avg: number, min: number, max: number } | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   
   const [ethers, setEthers] = useState<any>(null);
@@ -45,6 +50,10 @@ const App: React.FC = () => {
   useEffect(() => {
     storage.setItem('rpcUrl', rpcUrl);
   }, [rpcUrl]);
+
+  useEffect(() => {
+      storage.setItem('analysisDays', days.toString());
+  }, [days]);
 
   const addLog = (message: string, type: LogEntry['type'] = 'info') => {
     const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -108,9 +117,11 @@ const App: React.FC = () => {
     setResults({});
     setDiscoveredAssets([]);
     setWalletBalances(null);
+    setWatchListPrices([]);
+    setGasData(null);
     setLogs([]); 
-    addLog(`Starting analysis for wallet: ${address}`, 'info');
-    addLog(`Using RPC Node: ${rpcUrl}`, 'network');
+    addLog(`[Analysis] Starting analysis for wallet: ${address}`, 'info');
+    addLog(`[Network] Using RPC Node: ${rpcUrl}`, 'network');
 
     try {
       if (!ethers.isAddress(address)) throw new Error("无效的钱包地址 (Invalid Wallet Address)");
@@ -118,10 +129,19 @@ const App: React.FC = () => {
       const priceCache = new Map<string, number>();
       setStatusMessage("正在扫描链上资产 (Scanning Assets)...");
       
-      // Fetch wallet balances in parallel with asset discovery
+      // Fetch wallet balances, watchlist prices, and gas analytics in parallel
+      
+      fetchGasAnalytics(rpcUrl, addLog)
+          .then(setGasData)
+          .catch(err => addLog(`[Error] Could not fetch gas analytics: ${err.message}`, 'error'));
+
+      fetchWatchListPrices(rpcUrl, addLog, priceCache)
+          .then(setWatchListPrices)
+          .catch(err => addLog(`[Error] Could not fetch watch list prices: ${err.message}`, 'error'));
+
       fetchWalletBalances(address, rpcUrl, addLog, priceCache)
           .then(setWalletBalances)
-          .catch(err => addLog(`Could not fetch wallet balances: ${err.message}`, 'error'));
+          .catch(err => addLog(`[Error] Could not fetch wallet balances: ${err.message}`, 'error'));
       
       const assets = await discoverActiveAssets(address, rpcUrl, addLog);
       
@@ -138,26 +158,26 @@ const App: React.FC = () => {
       
       for (const asset of assets) {
           setStatusMessage(`正在分析 ${asset.symbol} (${days} days)...`);
-          addLog(`Starting trace for ${asset.name}...`, 'info');
+          addLog(`[Analysis] Starting trace for ${asset.name}...`, 'info');
           
           try {
               const onChainData = await fetchOnChainData(address, asset.address, days, rpcUrl, addLog, priceCache);
               
-              addLog(`History loaded for ${asset.symbol}. Calculating Yield...`, 'info');
+              addLog(`[Analysis] History loaded for ${asset.symbol}. Calculating Yield...`, 'info');
               const analysis = processData(onChainData);
-              addLog(`Report Ready: ${asset.symbol}`, 'success');
+              addLog(`[Success] Report Ready: ${asset.symbol}`, 'success');
               
               newResults[asset.address] = analysis;
               setResults({...newResults}); 
           } catch (err: any) {
-              addLog(`Failed to analyze ${asset.symbol}: ${err.message}`, 'error');
+              addLog(`[Error] Failed to analyze ${asset.symbol}: ${err.message}`, 'error');
           }
       }
 
     } catch (err: any) {
       const msg = err.message || "An unexpected error occurred during analysis.";
       setError(msg);
-      addLog(msg, 'error');
+      addLog(`[Error] ${msg}`, 'error');
     } finally {
       setLoading(false);
       setStatusMessage('');
@@ -176,7 +196,7 @@ const App: React.FC = () => {
           </div>
           <div className="text-xs text-aave-muted hidden sm:flex items-center gap-2">
              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-             Ethereum Mainnet (Umbrella & Lido)
+             Ethereum Mainnet | Yield • Market • Gas
           </div>
         </div>
       </header>
@@ -190,8 +210,8 @@ const App: React.FC = () => {
              <div className="relative z-10 max-w-2xl mx-auto">
                 <h1 className="text-2xl font-bold mb-3 text-white text-center">全景收益分析 (Yield Inspector)</h1>
                 <p className="text-aave-muted mb-6 text-sm">
-                  支持 <span className="text-white font-mono bg-gray-800 px-1 rounded">Aave Umbrella</span> 安全模块与 <span className="text-white font-mono bg-gray-800 px-1 rounded">Lido stETH</span>。
-                  自动扫描地址，精准计算底层资产增长与激励收益。
+                  集成 <span className="text-white font-mono bg-gray-800 px-1 rounded">Aave Umbrella</span> & <span className="text-white font-mono bg-gray-800 px-1 rounded">Lido stETH</span> 收益分析。
+                  实时监控市场价格与网络 Gas 概览，助您精准决策。
                 </p>
 
                 <form onSubmit={handleAnalyze} className="space-y-4">
@@ -248,6 +268,68 @@ const App: React.FC = () => {
           <div className="bg-red-900/20 border border-red-500/50 text-red-200 p-4 rounded-xl flex items-center gap-3">
             <AlertCircle size={20} /> <p>{error}</p>
           </div>
+        )}
+
+        {/* Gas Analytics Panel */}
+        {gasData && (
+            <div className="animate-fade-in space-y-3 bg-[#1a1e30] border border-gray-700/50 rounded-2xl p-4 shadow-xl">
+                 <h3 className="text-base font-bold text-white flex items-center gap-2 mb-2">
+                    <Flame className="text-orange-500" size={18} />
+                    网络 Gas 概览 (Network Gas - Last 5 Blocks)
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                    <div className="bg-aave-dark/50 rounded-lg p-3 flex flex-col items-center justify-center border border-orange-500/30">
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Latest</span>
+                        <span className="text-lg font-bold text-orange-400">{gasData.latest.toFixed(2)}</span>
+                        <span className="text-[10px] text-gray-500">Gwei</span>
+                    </div>
+                    <div className="bg-aave-dark/50 rounded-lg p-3 flex flex-col items-center justify-center border border-gray-700/30">
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Median</span>
+                        <span className="text-lg font-bold text-white">{gasData.median.toFixed(2)}</span>
+                        <span className="text-[10px] text-gray-500">Gwei</span>
+                    </div>
+                    <div className="bg-aave-dark/50 rounded-lg p-3 flex flex-col items-center justify-center border border-gray-700/30">
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Top 20% Avg</span>
+                        <span className="text-lg font-bold text-red-400">{gasData.top20Avg.toFixed(2)}</span>
+                        <span className="text-[10px] text-gray-500">Gwei</span>
+                    </div>
+                    <div className="bg-aave-dark/50 rounded-lg p-3 flex flex-col items-center justify-center border border-gray-700/30">
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Low 80% Avg</span>
+                        <span className="text-lg font-bold text-green-400">{gasData.bottom80Avg.toFixed(2)}</span>
+                        <span className="text-[10px] text-gray-500">Gwei</span>
+                    </div>
+                    <div className="bg-aave-dark/50 rounded-lg p-3 flex flex-col items-center justify-center border border-gray-700/30">
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Min</span>
+                        <span className="text-lg font-bold text-gray-300">{gasData.min.toFixed(2)}</span>
+                        <span className="text-[10px] text-gray-500">Gwei</span>
+                    </div>
+                    <div className="bg-aave-dark/50 rounded-lg p-3 flex flex-col items-center justify-center border border-gray-700/30">
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Max</span>
+                        <span className="text-lg font-bold text-gray-300">{gasData.max.toFixed(2)}</span>
+                        <span className="text-[10px] text-gray-500">Gwei</span>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Watch List Prices */}
+        {watchListPrices.length > 0 && (
+            <div className="animate-fade-in space-y-3 bg-[#1a1e30] border border-gray-700/50 rounded-2xl p-4 shadow-xl">
+                 <h3 className="text-base font-bold text-white flex items-center gap-2 mb-2">
+                    <Eye className="text-aave-secondary" size={18} />
+                    市场价格监控 (Market Watch)
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {watchListPrices.map((token) => (
+                        <div key={token.symbol} className="bg-aave-dark/50 rounded-lg p-3 flex items-center justify-between border border-gray-700/30">
+                            <span className="font-bold text-gray-200 pl-2">{token.symbol}</span>
+                            <span className="font-mono text-aave-secondary font-bold">
+                                ${token.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
         )}
 
         {/* Wallet Balance Summary */}
@@ -412,7 +494,7 @@ const App: React.FC = () => {
 
         {/* Debug Logs */}
         <section className="mt-12">
-            <LogPanel logs={logs} />
+            <LogPanel logs={logs} onClear={() => setLogs([])} />
         </section>
 
       </main>

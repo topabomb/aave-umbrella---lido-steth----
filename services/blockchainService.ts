@@ -55,7 +55,7 @@ export const discoverActiveAssets = async (userAddress: string, rpcUrl: string, 
     let allAssets: string[] = [];
     try {
         allAssets = await rewardsContract.getAllAssets();
-        log(`Controller manages ${allAssets.length} assets.`, 'success');
+        log(`[Discovery] Controller manages ${allAssets.length} assets.`, 'success');
     } catch (e) {
         try { allAssets = await rewardsContract.getAssetsList(); } catch(e2) {}
     }
@@ -81,7 +81,7 @@ export const discoverActiveAssets = async (userAddress: string, rpcUrl: string, 
                     symbol,
                     underlyingSymbol: underlyingSymbol || symbol
                 });
-                log(`Found Umbrella Position: ${symbol}`, 'success');
+                log(`[Discovery] Found Umbrella Position: ${symbol}`, 'success');
             }
         } catch (e) {}
     }));
@@ -91,7 +91,7 @@ export const discoverActiveAssets = async (userAddress: string, rpcUrl: string, 
         const lidoContract = new ethers.Contract(LIDO_ADDRESS, LIDO_ABI, provider);
         const balanceBN = await lidoContract.sharesOf(userAddress);
         if (balanceBN > 0n) {
-            log(`Found Lido Position: stETH`, 'success');
+            log(`[Discovery] Found Lido Position: stETH`, 'success');
             activeAssets.push({
                 id: LIDO_ADDRESS,
                 address: LIDO_ADDRESS,
@@ -105,7 +105,7 @@ export const discoverActiveAssets = async (userAddress: string, rpcUrl: string, 
     }
 
     if (activeAssets.length === 0) {
-        log('No active staking assets found for this address.', 'info');
+        log('[Discovery] No active staking assets found for this address.', 'info');
     }
 
     return activeAssets;
@@ -128,11 +128,11 @@ export const fetchOnChainData = async (userAddress: string, contractAddress: str
         const name = 'Liquid staked Ether 2.0';
         const decimals = 18;
         
-        log(`Analyzing ${symbol} (Lido) over last ${days} days...`, 'info');
+        log(`[Analysis] Analyzing ${symbol} (Lido) over last ${days} days...`, 'info');
         
         // Oracle Price (stETH -> USD)
         const usdPrice = await getAssetPriceInUSD(contractAddress, provider, priceCache);
-        log(`Oracle Price for ${symbol}: $${usdPrice.toFixed(2)}`, 'info');
+        log(`[Oracle] Price for ${symbol}: $${usdPrice.toFixed(2)}`, 'info');
 
         // History Loop
         const historyPoints = days;
@@ -186,7 +186,7 @@ export const fetchOnChainData = async (userAddress: string, contractAddress: str
         const validData = historicalDataRaw.filter(d => d.exchangeRate > 0);
         
         const finalCurrent = validData[validData.length - 1] || { balance: 0, underlyingValue: 0 };
-        log(`Completed trace for stETH.`, 'success');
+        log(`[Analysis] Completed trace for stETH.`, 'success');
 
         return {
             currentBalance: finalCurrent.balance,
@@ -235,7 +235,7 @@ export const fetchOnChainData = async (userAddress: string, contractAddress: str
     
     const stkDecimals = Number(stkDecimalsBN);
     const totalSupply = parseFloat(ethers.formatUnits(totalSupplyBN, stkDecimals));
-    log(`Analyzing ${symbol} over last ${days} days...`, 'info');
+    log(`[Analysis] Analyzing ${symbol} over last ${days} days...`, 'info');
 
     // Resolve Chain
     let waTokenAddress: string | null = null;
@@ -267,16 +267,16 @@ export const fetchOnChainData = async (userAddress: string, contractAddress: str
     let usdPrice = 0.0;
     if (underlyingAddress) {
         usdPrice = await getAssetPriceInUSD(underlyingAddress, provider, priceCache);
-        log(`Oracle Price for ${symbol} (underlying: ${underlyingAddress}): $${usdPrice.toFixed(4)}`, 'info');
+        log(`[Oracle] Price for ${symbol} (underlying: ${underlyingAddress}): $${usdPrice.toFixed(4)}`, 'info');
     }
 
     // Fallback for stablecoins if oracle fails
     if (usdPrice === 0.0) {
-        log(`Oracle lookup failed for ${symbol}. Attempting fallback based on symbol name.`, 'warn');
+        log(`[Oracle] Lookup failed for ${symbol}. Attempting fallback based on symbol name.`, 'warn');
         const normalizedSymbol = symbol.toUpperCase();
         if (normalizedSymbol.includes('USDT') || normalizedSymbol.includes('USDC') || normalizedSymbol.includes('DAI')) {
             usdPrice = 1.0;
-            log(`Symbol contains stablecoin ticker. Applying $1.00 fallback price.`, 'success');
+            log(`[Oracle] Symbol contains stablecoin ticker. Applying $1.00 fallback price.`, 'success');
         }
     }
 
@@ -388,7 +388,7 @@ export const fetchOnChainData = async (userAddress: string, contractAddress: str
     const currentData = await fetchDataAtBlock(currentBlock, 'Today');
     if (currentData) {
         historicalDataRaw.push(currentData);
-        log(`> Current Balance: ${currentData.balance.toFixed(2)} Shares`, 'info');
+        log(`[Analysis] > Current Balance: ${currentData.balance.toFixed(2)} Shares`, 'info');
     }
 
     for (let i = 1; i <= historyPoints; i++) {
@@ -408,7 +408,7 @@ export const fetchOnChainData = async (userAddress: string, contractAddress: str
     const validData = historicalDataRaw.filter(d => d.exchangeRate > 0);
 
     if (validData.length === 0) {
-         log('No valid data points found.', 'error');
+         log('[Error] No valid data points found.', 'error');
          return {
             currentBalance: 0,
             currentUnderlyingValue: 0,
@@ -425,7 +425,7 @@ export const fetchOnChainData = async (userAddress: string, contractAddress: str
     }
     
     const finalCurrent = validData[validData.length - 1];
-    log(`Completed trace for ${symbol}.`, 'success');
+    log(`[Analysis] Completed trace for ${symbol}.`, 'success');
 
     return {
       currentBalance: finalCurrent.balance,
@@ -442,7 +442,7 @@ export const fetchOnChainData = async (userAddress: string, contractAddress: str
     };
 
   } catch (error: any) {
-    log(`Fatal Error for ${contractAddress}: ${error.message}`, 'error');
+    log(`[Error] Fatal Error for ${contractAddress}: ${error.message}`, 'error');
     throw new Error(error.message);
   }
 };
@@ -531,7 +531,7 @@ export const processData = (onChainData: OnChainData): AnalysisResult => {
 // 4. Wallet Balance Fetching
 // ==========================================
 export const fetchWalletBalances = async (userAddress: string, rpcUrl: string, log: Logger, priceCache: PriceCache = new Map()): Promise<WalletBalances> => {
-    log(`Fetching main wallet balances for ${userAddress}...`, 'network');
+    log(`[Network] Fetching main wallet balances for ${userAddress}...`, 'network');
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const balances: TokenBalance[] = [];
     let totalValueUSD = 0;
@@ -561,10 +561,10 @@ export const fetchWalletBalances = async (userAddress: string, rpcUrl: string, l
                     priceUSD,
                 });
                 totalValueUSD += valueUSD;
-                log(`  - Found: ${balance.toFixed(4)} ${token.symbol} ($${valueUSD.toFixed(2)})`, 'info');
+                log(`[Wallet] Found: ${balance.toFixed(4)} ${token.symbol} ($${valueUSD.toFixed(2)})`, 'info');
             }
         } catch (e: any) {
-            log(`Could not fetch balance for ${token.symbol}: ${e.message}`, 'error');
+            log(`[Error] Could not fetch balance for ${token.symbol}: ${e.message}`, 'error');
         }
     });
 
@@ -573,6 +573,116 @@ export const fetchWalletBalances = async (userAddress: string, rpcUrl: string, l
     // Sort by value
     balances.sort((a, b) => b.valueUSD - a.valueUSD);
 
-    log('Finished fetching wallet balances.', 'success');
+    log('[Success] Finished fetching wallet balances.', 'success');
     return { balances, totalValueUSD };
 }
+
+// ==========================================
+// 5. Watch List Price Fetching
+// ==========================================
+export const fetchWatchListPrices = async (rpcUrl: string, log: Logger, priceCache: PriceCache = new Map()): Promise<{symbol: string, price: number, address: string, decimals: number}[]> => {
+    log('[Oracle] Fetching prices for watch list tokens...', 'network');
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+    const tokens = Object.values(WATCH_LIST_TOKENS);
+    
+    // Process in chunks to avoid rate limits if necessary, but parallel is usually fine for read calls
+    const promises = tokens.map(async (token) => {
+        try {
+            // Use WETH address for ETH price lookup if needed, or just rely on the feed mapping
+            // In constants.ts, ETH is mapped to 0xEeeee... which doesn't have a direct feed in CHAINLINK_FEEDS usually unless mapped.
+            // But let's check getAssetPriceInUSD logic.
+            // It uses CHAINLINK_FEEDS[address.toLowerCase()]. 
+            // We need to ensure ETH address is mapped there or handle it. 
+            // Looking at constants.ts, '0xEeeee...' is NOT in CHAINLINK_FEEDS. 
+            // However, WETH is. So for ETH, we should use WETH's address for price lookup.
+            
+            let lookupAddress = token.address;
+            if (token.symbol === 'ETH') {
+                lookupAddress = WATCH_LIST_TOKENS['WETH'].address;
+            }
+
+            const price = await getAssetPriceInUSD(lookupAddress, provider, priceCache);
+            
+            if (price > 0) {
+                 return {
+                    symbol: token.symbol,
+                    price,
+                    address: token.address,
+                    decimals: token.decimals
+                };
+            }
+            return null;
+        } catch (e) {
+            log(`[Error] Failed to fetch price for ${token.symbol}`, 'error');
+            return null;
+        }
+    });
+
+    const resultsRaw = await Promise.all(promises);
+    const results = resultsRaw.filter(item => item !== null) as {symbol: string, price: number, address: string, decimals: number}[];
+
+    log(`[Oracle] Updated prices for ${results.length} watch list tokens.`, 'success');
+    
+    return results;
+};
+
+// ==========================================
+// 6. Gas Analytics
+// ==========================================
+export const fetchGasAnalytics = async (rpcUrl: string, log: Logger): Promise<{ latest: number, median: number, top20Avg: number, bottom80Avg: number, min: number, max: number } | null> => {
+    try {
+        log('[Network] Fetching gas analytics (last 5 blocks)...', 'network');
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        
+        // Fetch 5 blocks of history. 
+        // Result baseFeePerGas will have 6 items: [b1, b2, b3, b4, b5, next_b6]
+        // Using provider.send to avoid TS issues with getFeeHistory
+        const history = await provider.send("eth_feeHistory", ["0x5", "latest", []]);
+        
+        if (!history || !history.baseFeePerGas || history.baseFeePerGas.length < 5) {
+            throw new Error("Insufficient gas history data");
+        }
+
+        // We use the 5 mined blocks (indices 0 to 4) for statistics
+        const baseFeesRaw = history.baseFeePerGas.slice(0, 5).map((v: string) => Number(v)); // wei
+        
+        // Convert to Gwei
+        const baseFeesGwei = baseFeesRaw.map(v => v / 1e9);
+        
+        // Sort for stats
+        const sorted = [...baseFeesGwei].sort((a, b) => a - b);
+        
+        const min = sorted[0];
+        const max = sorted[sorted.length - 1];
+        const median = sorted[Math.floor(sorted.length / 2)];
+        
+        // Top 20% of 5 is 1 block (Index 4)
+        const top20Count = Math.max(1, Math.floor(sorted.length * 0.2));
+        const top20 = sorted.slice(sorted.length - top20Count);
+        const top20Avg = top20.reduce((a, b) => a + b, 0) / top20.length;
+        
+        // Bottom 80% of 5 is 4 blocks (Indices 0-3)
+        const bottom80Count = sorted.length - top20Count;
+        const bottom80 = sorted.slice(0, bottom80Count);
+        const bottom80Avg = bottom80.length > 0 ? bottom80.reduce((a, b) => a + b, 0) / bottom80.length : 0;
+
+        // Latest mined block is the last one in our slice (index 4 of original array, or last of sorted? NO, last of original slice)
+        const latest = baseFeesGwei[baseFeesGwei.length - 1];
+
+        log(`[Network] Gas Analytics: Latest ${latest.toFixed(2)} Gwei`, 'success');
+
+        return {
+            latest,
+            median,
+            top20Avg,
+            bottom80Avg,
+            min,
+            max
+        };
+
+    } catch (e: any) {
+        log(`[Error] Failed to fetch gas analytics: ${e.message}`, 'error');
+        return null;
+    }
+};

@@ -14,9 +14,12 @@ export const WATCH_LIST_TOKENS = {
     'USDC': { address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6, symbol: 'USDC' },
     'USDT': { address: '0xdac17f958d2ee523a2206206994597c13d831ec7', decimals: 6, symbol: 'USDT' },
     'DAI': { address: '0x6b175474e89094c44da98b954eedeac495271d0f', decimals: 18, symbol: 'DAI' },
+    'AAVE': { address: '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', decimals: 18, symbol: 'AAVE' },
+    'UNI': { address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', decimals: 18, symbol: 'UNI' },
 };
 
 export const ANALYSIS_OPTIONS = [
+  { days: 1, label: '最近 1 天 (Last 1 Days)' },
   { days: 7, label: '最近 7 天 (Last 7 Days)' },
   { days: 14, label: '最近 14 天 (Last 14 Days)' },
   { days: 30, label: '最近 30 天 (Last 30 Days)' },
@@ -85,6 +88,10 @@ export const CHAINLINK_FEEDS: Record<string, string> = {
     // stETH (Lido) -> uses ETH/USD feed usually, or stETH/USD. We map stETH address to ETH/USD feed for simplicity or stETH feed.
     // stETH / USD Chainlink Feed
     '0xae7ab96520de3a18e5e111b5eaab095312d7fe84': '0xCfE54B5cD566aB89272946F602D76Ea879CAb4a8', 
+    // AAVE -> USD
+    '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9': '0x547a514d5e3769680Ce22B2361c10Ea13619e8a9',
+    // UNI -> USD
+    '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984': '0x553303d460EE0afB37EdFf9bE42922D8FF63220e',
 };
 
 export const BLOCKS_PER_DAY = 7200; // Exact Ethereum PoS 12s per block (60*60*24 / 12 = 7200)
