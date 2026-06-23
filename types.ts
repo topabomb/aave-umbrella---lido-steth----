@@ -41,8 +41,9 @@ export interface OnChainData {
     date: string; 
     balance: number; // Staked Shares
     underlyingValue: number; // Resolved USDC/USDT Value
-    exchangeRate: number; // Underlying per Share
+    exchangeRate: number; // Underlying per Share, or Aave normalized index
     rewards: number; 
+    accrualBalance?: number; // Principal-like balance used for interest accrual calculations
   }[];
   totalSupply: number;
   blockNumber: number;

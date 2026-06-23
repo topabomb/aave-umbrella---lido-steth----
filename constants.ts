@@ -45,7 +45,13 @@ export const AAVE_POOL_ADDRESSES_PROVIDER_ABI = [
 ];
 
 export const AAVE_V3_POOL_ABI = [
-  "function getReserveData(address asset) view returns (tuple(uint256 configuration, uint128 liquidityIndex, uint128 currentLiquidityRate, uint128 variableBorrowIndex, uint128 currentVariableBorrowRate, uint128 currentStableBorrowRate, uint40 lastUpdateTimestamp, uint16 id, address aTokenAddress, address stableDebtTokenAddress, address variableDebtTokenAddress, address interestRateStrategyAddress, uint128 accruedToTreasury, uint128 unbacked, uint128 isolationModeTotalDebt))"
+  "function getReserveData(address asset) view returns (tuple(uint256 configuration, uint128 liquidityIndex, uint128 currentLiquidityRate, uint128 variableBorrowIndex, uint128 currentVariableBorrowRate, uint128 currentStableBorrowRate, uint40 lastUpdateTimestamp, uint16 id, address aTokenAddress, address stableDebtTokenAddress, address variableDebtTokenAddress, address interestRateStrategyAddress, uint128 accruedToTreasury, uint128 unbacked, uint128 isolationModeTotalDebt))",
+  "function getReserveNormalizedIncome(address asset) view returns (uint256)",
+  "function getReserveNormalizedVariableDebt(address asset) view returns (uint256)"
+];
+
+export const AAVE_SCALED_TOKEN_ABI = [
+  "function scaledBalanceOf(address user) view returns (uint256)"
 ];
 
 export const AAVE_V3_LENDING_MARKETS = [

@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { TOKEN_ABI, ERC4626_ABI, REWARDS_ABI, CHAINLINK_ABI, CHAINLINK_FEEDS, DEFAULT_REWARDS_CONTROLLER, LIDO_ADDRESS, LIDO_ABI, BLOCKS_PER_DAY, WATCH_LIST_TOKENS, AAVE_V3_POOL_ADDRESSES_PROVIDER, AAVE_POOL_ADDRESSES_PROVIDER_ABI, AAVE_V3_POOL_ABI, AAVE_V3_LENDING_MARKETS } from '../constants';
+import { TOKEN_ABI, ERC4626_ABI, REWARDS_ABI, CHAINLINK_ABI, CHAINLINK_FEEDS, DEFAULT_REWARDS_CONTROLLER, LIDO_ADDRESS, LIDO_ABI, BLOCKS_PER_DAY, WATCH_LIST_TOKENS, AAVE_V3_POOL_ADDRESSES_PROVIDER, AAVE_POOL_ADDRESSES_PROVIDER_ABI, AAVE_V3_POOL_ABI, AAVE_V3_LENDING_MARKETS, AAVE_SCALED_TOKEN_ABI } from '../constants';
 import { OnChainData, Logger, DiscoveredAsset, AnalysisResult, DailyEarning, WalletBalances, TokenBalance } from '../types';
 
 // ==========================================
@@ -118,8 +118,8 @@ export const discoverActiveAssets = async (userAddress: string, rpcUrl: string, 
                 const variableDebtTokenAddress = reserveData.variableDebtTokenAddress;
 
                 const [aToken, debtToken] = [
-                    new ethers.Contract(aTokenAddress, TOKEN_ABI, provider),
-                    new ethers.Contract(variableDebtTokenAddress, TOKEN_ABI, provider),
+                    new ethers.Contract(aTokenAddress, [...TOKEN_ABI, ...AAVE_SCALED_TOKEN_ABI], provider),
+                    new ethers.Contract(variableDebtTokenAddress, [...TOKEN_ABI, ...AAVE_SCALED_TOKEN_ABI], provider),
                 ];
 
                 const [supplyBalanceBN, borrowBalanceBN] = await Promise.all([
@@ -194,7 +194,7 @@ export const fetchOnChainData = async (userAddress: string, contractAddress: str
         const pool = new ethers.Contract(poolAddress, AAVE_V3_POOL_ABI, provider);
         const reserveData = await pool.getReserveData(market.address);
         const tokenAddress = positionType === 'aave-v3-borrow' ? reserveData.variableDebtTokenAddress : reserveData.aTokenAddress;
-        const positionToken = new ethers.Contract(tokenAddress, TOKEN_ABI, provider);
+        const positionToken = new ethers.Contract(tokenAddress, [...TOKEN_ABI, ...AAVE_SCALED_TOKEN_ABI], provider);
         const underlying = new ethers.Contract(market.address, TOKEN_ABI, provider);
 
         const currentBlock = await provider.getBlockNumber();
@@ -211,17 +211,34 @@ export const fetchOnChainData = async (userAddress: string, contractAddress: str
         const historicalDataRaw: any[] = [];
         const today = new Date();
 
+        const RAY = 10n ** 27n;
         const fetchAaveV3AtBlock = async (block: number, dateStr: string) => {
             try {
-                const balanceBN = await positionToken.balanceOf(userAddress, { blockTag: block });
+                const overrides = { blockTag: block };
+                const [balanceBN, scaledBalanceBN, normalizedIndexBN] = await Promise.all([
+                    positionToken.balanceOf(userAddress, overrides),
+                    positionToken.scaledBalanceOf(userAddress, overrides),
+                    positionType === 'aave-v3-borrow'
+                        ? pool.getReserveNormalizedVariableDebt(market.address, overrides)
+                        : pool.getReserveNormalizedIncome(market.address, overrides),
+                ]);
+
                 const balance = parseFloat(ethers.formatUnits(balanceBN, decimals));
+                const accrualBalance = parseFloat(ethers.formatUnits(scaledBalanceBN, decimals));
+                const normalizedIndex = BigInt(normalizedIndexBN);
+                const scaledBalance = BigInt(scaledBalanceBN);
+                const underlyingValueBN = (scaledBalance * normalizedIndex) / RAY;
+                const underlyingValue = parseFloat(ethers.formatUnits(underlyingValueBN, decimals));
+                const exchangeRate = parseFloat(ethers.formatUnits(normalizedIndex, 27));
+
                 return {
                     block,
                     date: dateStr,
                     balance,
-                    underlyingValue: balance,
-                    exchangeRate: 1,
+                    underlyingValue,
+                    exchangeRate,
                     rewards: 0,
+                    accrualBalance,
                 };
             } catch (e) {
                 return null;
@@ -609,16 +626,21 @@ export const processData = (onChainData: OnChainData): AnalysisResult => {
 
         if (prev) {
             if (onChainData.positionType === 'aave-v3-supply') {
-                // Aave aToken balances grow as supply interest accrues.
-                lendingGain = current.underlyingValue - prev.underlyingValue;
+                // Aave supply yield is driven by the normalized income index.
+                // Use the previous scaled balance so deposits/withdrawals during the interval are not counted as yield.
+                const rateDiff = current.exchangeRate - prev.exchangeRate;
+                lendingGain = rateDiff * (prev.accrualBalance ?? prev.balance);
             } else if (onChainData.positionType === 'aave-v3-borrow') {
-                // Variable debt token balances grow as borrow interest accrues, so costs are negative yield.
-                lendingGain = prev.underlyingValue - current.underlyingValue;
+                // Variable borrow cost is driven by the normalized variable debt index.
+                // Use the previous scaled debt so new borrows/repayments during the interval are not counted as interest cost.
+                const rateDiff = current.exchangeRate - prev.exchangeRate;
+                lendingGain = -rateDiff * (prev.accrualBalance ?? prev.balance);
             } else {
-                // Lending Gain = Balance * (Rate_T2 - Rate_T1)
+                // Lending Gain = previous shares * (Rate_T2 - Rate_T1).
+                // Using previous shares avoids treating new deposits/redemptions as yield.
                 const rateDiff = current.exchangeRate - prev.exchangeRate;
                 if (rateDiff > 0.00000000000000001) {
-                    lendingGain = rateDiff * current.balance;
+                    lendingGain = rateDiff * prev.balance;
                 }
             }
 
