@@ -60,13 +60,17 @@ const App: React.FC = () => {
     setLogs(prev => [...prev, { timestamp: time, message, type }]);
   };
 
-  // Calculate Aggregated Metrics for Global, Lido, and Umbrella
-  const { globalSummary, lidoSummary, umbrellaSummary } = useMemo(() => {
+  // Calculate Aggregated Metrics for Global, Lido, Umbrella, and Aave V3 lending
+  const { globalSummary, lidoSummary, umbrellaSummary, aaveLendingSummary } = useMemo(() => {
       const lido = {
           totalValueUSD: 0, totalDailyEarningsUSD: 0, totalPeriodEarningsUSD: 0,
           weightedAPYNumerator: 0, assetCount: 0,
       };
       const umbrella = {
+          totalValueUSD: 0, totalDailyEarningsUSD: 0, totalPeriodEarningsUSD: 0,
+          weightedAPYNumerator: 0, assetCount: 0,
+      };
+      const aaveLending = {
           totalValueUSD: 0, totalDailyEarningsUSD: 0, totalPeriodEarningsUSD: 0,
           weightedAPYNumerator: 0, assetCount: 0,
       };
@@ -78,7 +82,8 @@ const App: React.FC = () => {
           const dailyYieldUSD = dailyYield * res.stats.priceUsd;
           const periodEarningsUSD = res.stats.periodEarnings * res.stats.priceUsd;
 
-          const target = res.onChainData.symbol === 'stETH' ? lido : umbrella;
+          const isAaveV3Lending = res.onChainData.positionType === 'aave-v3-supply' || res.onChainData.positionType === 'aave-v3-borrow';
+          const target = res.onChainData.symbol === 'stETH' ? lido : (isAaveV3Lending ? aaveLending : umbrella);
           target.totalValueUSD += valUSD;
           target.totalDailyEarningsUSD += dailyYieldUSD;
           target.totalPeriodEarningsUSD += periodEarningsUSD;
@@ -86,16 +91,16 @@ const App: React.FC = () => {
           target.assetCount++;
       });
       
-      const globalTotalValue = lido.totalValueUSD + umbrella.totalValueUSD;
-      const globalNumerator = lido.weightedAPYNumerator + umbrella.weightedAPYNumerator;
+      const globalTotalValue = lido.totalValueUSD + umbrella.totalValueUSD + aaveLending.totalValueUSD;
+      const globalNumerator = lido.weightedAPYNumerator + umbrella.weightedAPYNumerator + aaveLending.weightedAPYNumerator;
 
       return {
           globalSummary: {
               totalValueUSD: globalTotalValue,
-              totalDailyEarningsUSD: lido.totalDailyEarningsUSD + umbrella.totalDailyEarningsUSD,
-              totalPeriodEarningsUSD: lido.totalPeriodEarningsUSD + umbrella.totalPeriodEarningsUSD,
+              totalDailyEarningsUSD: lido.totalDailyEarningsUSD + umbrella.totalDailyEarningsUSD + aaveLending.totalDailyEarningsUSD,
+              totalPeriodEarningsUSD: lido.totalPeriodEarningsUSD + umbrella.totalPeriodEarningsUSD + aaveLending.totalPeriodEarningsUSD,
               avgAPY: globalTotalValue > 0 ? globalNumerator / globalTotalValue : 0,
-              assetCount: lido.assetCount + umbrella.assetCount,
+              assetCount: lido.assetCount + umbrella.assetCount + aaveLending.assetCount,
           },
           lidoSummary: { 
               ...lido, 
@@ -104,6 +109,10 @@ const App: React.FC = () => {
           umbrellaSummary: { 
               ...umbrella, 
               avgAPY: umbrella.totalValueUSD > 0 ? umbrella.weightedAPYNumerator / umbrella.totalValueUSD : 0 
+          },
+          aaveLendingSummary: { 
+              ...aaveLending, 
+              avgAPY: aaveLending.totalValueUSD > 0 ? aaveLending.weightedAPYNumerator / aaveLending.totalValueUSD : 0 
           }
       };
   }, [results, days]);
@@ -146,7 +155,7 @@ const App: React.FC = () => {
       const assets = await discoverActiveAssets(address, rpcUrl, addLog);
       
       if (assets.length === 0) {
-          setError("该地址没有活跃的 Umbrella 或 Lido 质押资产。");
+          setError("该地址没有活跃的 Umbrella、Lido 或 Aave V3 USDC/USDT 借贷头寸。");
           setLoading(false);
           return;
       }
@@ -210,7 +219,7 @@ const App: React.FC = () => {
              <div className="relative z-10 max-w-2xl mx-auto">
                 <h1 className="text-2xl font-bold mb-3 text-white text-center">全景收益分析 (Yield Inspector)</h1>
                 <p className="text-aave-muted mb-6 text-sm">
-                  集成 <span className="text-white font-mono bg-gray-800 px-1 rounded">Aave Umbrella</span> & <span className="text-white font-mono bg-gray-800 px-1 rounded">Lido stETH</span> 收益分析。
+                  集成 <span className="text-white font-mono bg-gray-800 px-1 rounded">Aave Umbrella</span>、<span className="text-white font-mono bg-gray-800 px-1 rounded">Lido stETH</span> 与 <span className="text-white font-mono bg-gray-800 px-1 rounded">Aave V3 USDC/USDT</span> 借贷头寸分析。
                   实时监控市场价格与网络 Gas 概览，助您精准决策。
                 </p>
 
@@ -411,6 +420,21 @@ const App: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {aaveLendingSummary.assetCount > 0 && (
+                <div className="animate-fade-in space-y-3 bg-[#131625] border border-green-400/30 rounded-2xl p-4 shadow-xl lg:col-span-2">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                        <Coins className="text-green-400" />
+                        Aave V3 USDC/USDT 借贷汇总
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 text-sm">
+                        <StatsCard title="总头寸价值" value={`$${aaveLendingSummary.totalValueUSD.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} subValue={`${aaveLendingSummary.assetCount} 个头寸`} icon={DollarSign} color="text-green-400" />
+                        <StatsCard title="加权净 APY" value={`${(aaveLendingSummary.avgAPY * 100).toFixed(2)}%`} icon={PieChart} color="text-green-400" />
+                        <StatsCard title="总区间净收益" value={`$${aaveLendingSummary.totalPeriodEarningsUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} icon={TrendingUp} color="text-purple-400" />
+                        <StatsCard title="总日均净收益" value={`$${aaveLendingSummary.totalDailyEarningsUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} icon={Activity} color="text-green-400" />
+                    </div>
+                </div>
+            )}
         </div>
 
         {/* Results Grid */}
@@ -418,6 +442,8 @@ const App: React.FC = () => {
             {discoveredAssets.map((asset) => {
                 const result = results[asset.address];
                 const isLido = asset.symbol === 'stETH';
+                const isAaveV3Borrow = asset.positionType === 'aave-v3-borrow';
+                const isAaveV3Lending = asset.positionType === 'aave-v3-supply' || asset.positionType === 'aave-v3-borrow';
                 
                 if (!result) return (
                     // Loading Skeleton
@@ -433,7 +459,7 @@ const App: React.FC = () => {
                     <div key={asset.address} className="animate-fade-in space-y-3 bg-[#131625] border border-gray-700/50 rounded-2xl p-4 shadow-xl relative">
                         <div className="flex items-center justify-between border-b border-gray-700 pb-2 mb-2">
                             <h2 className="text-md font-bold text-white flex items-center gap-2">
-                                {isLido ? <Droplets className="text-blue-400" /> : <Coins className="text-aave-secondary" />}
+                                {isLido ? <Droplets className="text-blue-400" /> : <Coins className={isAaveV3Lending ? "text-green-400" : "text-aave-secondary"} />}
                                 {asset.name}
                             </h2>
                             <span className="text-xs px-2 py-1 rounded border bg-green-500/10 border-green-500/30 text-green-400">
@@ -444,29 +470,29 @@ const App: React.FC = () => {
                         {/* Top Stats - 4 Columns Now */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                             <StatsCard 
-                                title="质押份额 (Shares)" 
+                                title={isAaveV3Borrow ? "债务余额 (Debt)" : (isAaveV3Lending ? "供应余额 (Supply)" : "质押份额 (Shares)")} 
                                 value={result.onChainData?.currentBalance.toFixed(2) || "0.00"}
                                 subValue={result.onChainData?.symbol}
                                 icon={Layers}
                                 color="text-gray-400"
                             />
                             <StatsCard 
-                                title="持仓价值 (Value)" 
+                                title={isAaveV3Borrow ? "债务价值 (Debt)" : "持仓价值 (Value)"} 
                                 value={`${(result.onChainData?.currentUnderlyingValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                 subValue={asset.underlyingSymbol}
                                 icon={ShieldCheck}
-                                color={isLido ? "text-blue-400" : "text-aave-secondary"}
+                                color={isLido ? "text-blue-400" : (isAaveV3Lending ? "text-green-400" : "text-aave-secondary")}
                             />
                             {/* New Card: Period Earnings */}
                             <StatsCard 
-                                title={`区间收益 (${days}d)`} 
+                                title={isAaveV3Borrow ? `区间净成本 (${days}d)` : `区间收益 (${days}d)`} 
                                 value={`${(result.stats.periodEarnings || 0).toFixed(4)}`}
                                 subValue={asset.underlyingSymbol}
                                 icon={TrendingUp}
                                 color="text-purple-400"
                             />
                             <StatsCard 
-                                title="周期年化 (Period APY)" 
+                                title="周期年化/成本 (Period APY)" 
                                 value={`${(result.stats.apy * 100).toFixed(2)}%`}
                                 subValue="Based on Avg"
                                 icon={Activity}
@@ -476,7 +502,7 @@ const App: React.FC = () => {
 
                         {/* Chart */}
                         <div className="bg-aave-dark/50 rounded-xl p-2 h-[280px]">
-                            <h3 className="text-xs font-semibold text-gray-400 mb-1 px-2">收益构成详情 ({isLido ? "Lido Rebase" : "Lending"} + Rewards)</h3>
+                            <h3 className="text-xs font-semibold text-gray-400 mb-1 px-2">收益构成详情 ({isLido ? "Lido Rebase" : (isAaveV3Borrow ? "Borrow Cost" : "Lending")} + Rewards)</h3>
                             <EarningsChart data={result.earnings} />
                         </div>
                     </div>
@@ -488,7 +514,7 @@ const App: React.FC = () => {
         {discoveredAssets.length === 0 && !loading && !error && (
              <div className="text-center py-12 opacity-50">
                  <ShieldCheck size={48} className="mx-auto text-gray-600 mb-4" />
-                 <p className="text-gray-500">请在上方输入钱包地址以分析 Umbrella 或 Lido 头寸。</p>
+                 <p className="text-gray-500">请在上方输入钱包地址以分析 Umbrella、Lido 或 Aave V3 USDC/USDT 头寸。</p>
              </div>
         )}
 
