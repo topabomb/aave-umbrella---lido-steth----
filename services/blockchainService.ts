@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { TOKEN_ABI, ERC4626_ABI, REWARDS_ABI, CHAINLINK_ABI, CHAINLINK_FEEDS, DEFAULT_REWARDS_CONTROLLER, LIDO_ADDRESS, LIDO_ABI, BLOCKS_PER_DAY, WATCH_LIST_TOKENS } from '../constants';
+import { TOKEN_ABI, ERC4626_ABI, REWARDS_ABI, CHAINLINK_ABI, CHAINLINK_FEEDS, DEFAULT_REWARDS_CONTROLLER, LIDO_ADDRESS, LIDO_ABI, BLOCKS_PER_DAY, WATCH_LIST_TOKENS, AAVE_V3_POOL_ADDRESSES_PROVIDER, AAVE_POOL_ADDRESSES_PROVIDER_ABI, AAVE_V3_POOL_ABI, AAVE_V3_LENDING_MARKETS, AAVE_SCALED_TOKEN_ABI } from '../constants';
 import { OnChainData, Logger, DiscoveredAsset, AnalysisResult, DailyEarning, WalletBalances, TokenBalance } from '../types';
 
 // ==========================================
@@ -104,6 +104,64 @@ export const discoverActiveAssets = async (userAddress: string, rpcUrl: string, 
         // Lido check failed
     }
 
+    // --- C. Scan Aave V3 USDC / USDT supply and borrow positions ---
+    try {
+        log(`[Discovery] Resolving Aave V3 Pool for USDC/USDT lending positions...`, 'network');
+        const addressesProvider = new ethers.Contract(AAVE_V3_POOL_ADDRESSES_PROVIDER, AAVE_POOL_ADDRESSES_PROVIDER_ABI, provider);
+        const poolAddress = await addressesProvider.getPool();
+        const pool = new ethers.Contract(poolAddress, AAVE_V3_POOL_ABI, provider);
+
+        await Promise.all(AAVE_V3_LENDING_MARKETS.map(async (market) => {
+            try {
+                const reserveData = await pool.getReserveData(market.address);
+                const aTokenAddress = reserveData.aTokenAddress;
+                const variableDebtTokenAddress = reserveData.variableDebtTokenAddress;
+
+                const [aToken, debtToken] = [
+                    new ethers.Contract(aTokenAddress, [...TOKEN_ABI, ...AAVE_SCALED_TOKEN_ABI], provider),
+                    new ethers.Contract(variableDebtTokenAddress, [...TOKEN_ABI, ...AAVE_SCALED_TOKEN_ABI], provider),
+                ];
+
+                const [supplyBalanceBN, borrowBalanceBN] = await Promise.all([
+                    aToken.balanceOf(userAddress),
+                    debtToken.balanceOf(userAddress),
+                ]);
+
+                if (supplyBalanceBN > 0n) {
+                    activeAssets.push({
+                        id: `aave-v3-supply:${market.symbol}`,
+                        address: `aave-v3-supply:${market.symbol}`,
+                        tokenAddress: aTokenAddress,
+                        underlyingAddress: market.address,
+                        name: `Aave V3 ${market.symbol} Supply`,
+                        symbol: `a${market.symbol}`,
+                        underlyingSymbol: market.symbol,
+                        positionType: 'aave-v3-supply',
+                    });
+                    log(`[Discovery] Found Aave V3 Supply Position: ${market.symbol}`, 'success');
+                }
+
+                if (borrowBalanceBN > 0n) {
+                    activeAssets.push({
+                        id: `aave-v3-borrow:${market.symbol}`,
+                        address: `aave-v3-borrow:${market.symbol}`,
+                        tokenAddress: variableDebtTokenAddress,
+                        underlyingAddress: market.address,
+                        name: `Aave V3 ${market.symbol} Variable Debt`,
+                        symbol: `variableDebt${market.symbol}`,
+                        underlyingSymbol: market.symbol,
+                        positionType: 'aave-v3-borrow',
+                    });
+                    log(`[Discovery] Found Aave V3 Borrow Position: ${market.symbol}`, 'success');
+                }
+            } catch (e: any) {
+                log(`[Warn] Could not scan Aave V3 ${market.symbol}: ${e.message}`, 'warn');
+            }
+        }));
+    } catch (e: any) {
+        log(`[Warn] Aave V3 lending position scan failed: ${e.message}`, 'warn');
+    }
+
     if (activeAssets.length === 0) {
         log('[Discovery] No active staking assets found for this address.', 'info');
     }
@@ -118,9 +176,113 @@ export const fetchOnChainData = async (userAddress: string, contractAddress: str
   try {
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const isLido = contractAddress.toLowerCase() === LIDO_ADDRESS.toLowerCase();
+    const isAaveV3Lending = contractAddress.startsWith('aave-v3-supply:') || contractAddress.startsWith('aave-v3-borrow:');
+
+    // ----------------------------------------
+    // PATH A: AAVE V3 USDC/USDT SUPPLY OR BORROW
+    // ----------------------------------------
+    if (isAaveV3Lending) {
+        const positionType = contractAddress.startsWith('aave-v3-borrow:') ? 'aave-v3-borrow' : 'aave-v3-supply';
+        const marketSymbol = contractAddress.split(':')[1];
+        const market = AAVE_V3_LENDING_MARKETS.find((item) => item.symbol === marketSymbol);
+        if (!market) throw new Error(`Unsupported Aave V3 market: ${marketSymbol}`);
+
+        log(`[Analysis] Analyzing Aave V3 ${market.symbol} ${positionType === 'aave-v3-borrow' ? 'borrow' : 'supply'} over last ${days} days...`, 'info');
+
+        const addressesProvider = new ethers.Contract(AAVE_V3_POOL_ADDRESSES_PROVIDER, AAVE_POOL_ADDRESSES_PROVIDER_ABI, provider);
+        const poolAddress = await addressesProvider.getPool();
+        const pool = new ethers.Contract(poolAddress, AAVE_V3_POOL_ABI, provider);
+        const reserveData = await pool.getReserveData(market.address);
+        const tokenAddress = positionType === 'aave-v3-borrow' ? reserveData.variableDebtTokenAddress : reserveData.aTokenAddress;
+        const positionToken = new ethers.Contract(tokenAddress, [...TOKEN_ABI, ...AAVE_SCALED_TOKEN_ABI], provider);
+        const underlying = new ethers.Contract(market.address, TOKEN_ABI, provider);
+
+        const currentBlock = await provider.getBlockNumber();
+        const [decimalsBN, tokenSymbol, totalSupplyBN] = await Promise.all([
+            underlying.decimals().catch(() => BigInt(market.decimals)),
+            positionToken.symbol().catch(() => positionType === 'aave-v3-borrow' ? `variableDebt${market.symbol}` : `a${market.symbol}`),
+            positionToken.totalSupply().catch(() => 0n),
+        ]);
+        const decimals = Number(decimalsBN);
+        const totalSupply = parseFloat(ethers.formatUnits(totalSupplyBN, decimals));
+        const usdPrice = await getAssetPriceInUSD(market.address, provider, priceCache) || 1.0;
+        log(`[Oracle] Price for Aave V3 ${market.symbol}: $${usdPrice.toFixed(4)}`, 'info');
+
+        const historicalDataRaw: any[] = [];
+        const today = new Date();
+
+        const RAY = 10n ** 27n;
+        const fetchAaveV3AtBlock = async (block: number, dateStr: string) => {
+            try {
+                const overrides = { blockTag: block };
+                const [balanceBN, scaledBalanceBN, normalizedIndexBN] = await Promise.all([
+                    positionToken.balanceOf(userAddress, overrides),
+                    positionToken.scaledBalanceOf(userAddress, overrides),
+                    positionType === 'aave-v3-borrow'
+                        ? pool.getReserveNormalizedVariableDebt(market.address, overrides)
+                        : pool.getReserveNormalizedIncome(market.address, overrides),
+                ]);
+
+                const balance = parseFloat(ethers.formatUnits(balanceBN, decimals));
+                const accrualBalance = parseFloat(ethers.formatUnits(scaledBalanceBN, decimals));
+                const normalizedIndex = BigInt(normalizedIndexBN);
+                const scaledBalance = BigInt(scaledBalanceBN);
+                const underlyingValueBN = (scaledBalance * normalizedIndex) / RAY;
+                const underlyingValue = parseFloat(ethers.formatUnits(underlyingValueBN, decimals));
+                const exchangeRate = parseFloat(ethers.formatUnits(normalizedIndex, 27));
+
+                return {
+                    block,
+                    date: dateStr,
+                    balance,
+                    underlyingValue,
+                    exchangeRate,
+                    rewards: 0,
+                    accrualBalance,
+                };
+            } catch (e) {
+                return null;
+            }
+        };
+
+        const currentData = await fetchAaveV3AtBlock(currentBlock, 'Today');
+        if (currentData) {
+            historicalDataRaw.push(currentData);
+            log(`[Analysis] > Current ${positionType === 'aave-v3-borrow' ? 'Debt' : 'Supply'}: ${currentData.balance.toFixed(2)} ${market.symbol}`, 'info');
+        }
+
+        for (let i = 1; i <= days; i++) {
+            const targetBlock = currentBlock - (BLOCKS_PER_DAY * i);
+            const date = new Date(today);
+            date.setDate(today.getDate() - i);
+            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            if (i % 5 === 0) await new Promise(r => setTimeout(r, 50));
+            const data = await fetchAaveV3AtBlock(targetBlock, dateStr);
+            if (data) historicalDataRaw.push(data);
+        }
+
+        historicalDataRaw.sort((a, b) => a.block - b.block);
+        const finalCurrent = historicalDataRaw[historicalDataRaw.length - 1] || { balance: 0, underlyingValue: 0 };
+        log(`[Analysis] Completed trace for Aave V3 ${market.symbol} ${positionType === 'aave-v3-borrow' ? 'borrow' : 'supply'}.`, 'success');
+
+        return {
+            currentBalance: finalCurrent.balance,
+            currentUnderlyingValue: finalCurrent.underlyingValue,
+            historicalData: historicalDataRaw,
+            totalSupply,
+            blockNumber: currentBlock,
+            symbol: tokenSymbol,
+            name: `Aave V3 ${market.symbol} ${positionType === 'aave-v3-borrow' ? 'Variable Debt' : 'Supply'}`,
+            contractAddress,
+            id: contractAddress,
+            usdPrice,
+            underlyingAddress: market.address,
+            positionType,
+        };
+    }
     
     // ----------------------------------------
-    // PATH A: LIDO stETH
+    // PATH B: LIDO stETH
     // ----------------------------------------
     if (isLido) {
         const lidoContract = new ethers.Contract(contractAddress, LIDO_ABI, provider);
@@ -204,7 +366,7 @@ export const fetchOnChainData = async (userAddress: string, contractAddress: str
     }
 
     // ----------------------------------------
-    // PATH B: AAVE UMBRELLA (Existing Logic)
+    // PATH C: AAVE UMBRELLA (Existing Logic)
     // ----------------------------------------
     const stakeContract = new ethers.Contract(contractAddress, [...TOKEN_ABI, ...ERC4626_ABI], provider);
     
@@ -463,10 +625,23 @@ export const processData = (onChainData: OnChainData): AnalysisResult => {
         let rewardGain = 0;
 
         if (prev) {
-            // Lending Gain = Balance * (Rate_T2 - Rate_T1)
-            const rateDiff = current.exchangeRate - prev.exchangeRate;
-            if (rateDiff > 0.00000000000000001) {
-                lendingGain = rateDiff * current.balance;
+            if (onChainData.positionType === 'aave-v3-supply') {
+                // Aave supply yield is driven by the normalized income index.
+                // Use the previous scaled balance so deposits/withdrawals during the interval are not counted as yield.
+                const rateDiff = current.exchangeRate - prev.exchangeRate;
+                lendingGain = rateDiff * (prev.accrualBalance ?? prev.balance);
+            } else if (onChainData.positionType === 'aave-v3-borrow') {
+                // Variable borrow cost is driven by the normalized variable debt index.
+                // Use the previous scaled debt so new borrows/repayments during the interval are not counted as interest cost.
+                const rateDiff = current.exchangeRate - prev.exchangeRate;
+                lendingGain = -rateDiff * (prev.accrualBalance ?? prev.balance);
+            } else {
+                // Lending Gain = previous shares * (Rate_T2 - Rate_T1).
+                // Using previous shares avoids treating new deposits/redemptions as yield.
+                const rateDiff = current.exchangeRate - prev.exchangeRate;
+                if (rateDiff > 0.00000000000000001) {
+                    lendingGain = rateDiff * prev.balance;
+                }
             }
 
             // Reward Gain = Unclaimed Rewards Increase

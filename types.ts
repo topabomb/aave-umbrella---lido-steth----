@@ -19,13 +19,19 @@ export interface DailyEarning {
   dailyApy: number;
 }
 
+export type PositionType = 'umbrella' | 'lido' | 'aave-v3-supply' | 'aave-v3-borrow';
+
 export interface DiscoveredAsset {
-  id: string; // Contract address
+  id: string; // Contract address or synthetic position id
   name: string;
   symbol: string;
   address: string;
   underlyingSymbol: string;
+  positionType?: PositionType;
+  tokenAddress?: string;
+  underlyingAddress?: string;
 }
+
 
 export interface OnChainData {
   currentBalance: number; // Staked Shares
@@ -35,8 +41,9 @@ export interface OnChainData {
     date: string; 
     balance: number; // Staked Shares
     underlyingValue: number; // Resolved USDC/USDT Value
-    exchangeRate: number; // Underlying per Share
+    exchangeRate: number; // Underlying per Share, or Aave normalized index
     rewards: number; 
+    accrualBalance?: number; // Principal-like balance used for interest accrual calculations
   }[];
   totalSupply: number;
   blockNumber: number;
@@ -46,7 +53,9 @@ export interface OnChainData {
   id: string;
   usdPrice: number;
   underlyingAddress: string;
+  positionType?: PositionType;
 }
+
 
 export interface AnalysisResult {
   stats: StakingStats;
