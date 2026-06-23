@@ -7,6 +7,9 @@ export const DEFAULT_REWARDS_CONTROLLER = '0x4655Ce3D625a63d30bA704087E52B4C31E3
 // Lido stETH Contract
 export const LIDO_ADDRESS = '0xae7ab96520de3a18e5e111b5eaab095312d7fe84';
 
+// Aave V3 Ethereum PoolAddressesProvider (canonical entrypoint used to resolve the current Pool)
+export const AAVE_V3_POOL_ADDRESSES_PROVIDER = '0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e';
+
 export const WATCH_LIST_TOKENS = {
     'ETH': { address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', decimals: 18, symbol: 'ETH' },
     'WETH': { address: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', decimals: 18, symbol: 'WETH' },
@@ -34,6 +37,20 @@ export const TOKEN_ABI = [
   "function name() view returns (string)",
   "function REWARD_CONTROLLER() view returns (address)",
   "function getIncentivesController() view returns (address)"
+];
+
+
+export const AAVE_POOL_ADDRESSES_PROVIDER_ABI = [
+  "function getPool() view returns (address)"
+];
+
+export const AAVE_V3_POOL_ABI = [
+  "function getReserveData(address asset) view returns (tuple(uint256 configuration, uint128 liquidityIndex, uint128 currentLiquidityRate, uint128 variableBorrowIndex, uint128 currentVariableBorrowRate, uint128 currentStableBorrowRate, uint40 lastUpdateTimestamp, uint16 id, address aTokenAddress, address stableDebtTokenAddress, address variableDebtTokenAddress, address interestRateStrategyAddress, uint128 accruedToTreasury, uint128 unbacked, uint128 isolationModeTotalDebt))"
+];
+
+export const AAVE_V3_LENDING_MARKETS = [
+  WATCH_LIST_TOKENS.USDC,
+  WATCH_LIST_TOKENS.USDT,
 ];
 
 export const ERC4626_ABI = [
