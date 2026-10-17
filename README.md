@@ -17,7 +17,7 @@
 - **多维度汇总**:
   - 提供全局、Lido 和 Aave Umbrella 三个维度的汇总数据卡片，方便从不同角度审视资产表现。
 - **可配置 RPC 节点**: 用户可以自定义以太坊 RPC 节点 URL，以提高数据获取的稳定性和可靠性。
-- **本地持久化**: 自动保存用户输入的钱包地址和 RPC URL，方便下次使用。
+- **配置持久化**: 钱包地址、RPC URL 和分析周期修改后自动保存到当前站点的 Cookie，有效期 365 天，方便下次使用。Cookie 名称使用 `defiYield_` 前缀；首次读取时会迁移旧版 `localStorage` 中尚未过期的配置，确认写入成功后删除对应旧值。
 - **市场价格监控**:
   - 实时追踪主流 DeFi 代币 (ETH, AAVE, UNI, WBTC 等) 的预言机价格。
   - 响应式网格布局，清晰直观。
@@ -84,7 +84,7 @@
 │   │   └── StatsCard.tsx
 │   ├── services/          # 服务和业务逻辑
 │   │   ├── blockchainService.ts  # 核心的区块链数据获取和收益计算逻辑
-│   │   └── storageService.ts     # 浏览器本地存储服务
+│   │   └── storageService.ts     # Cookie 存储及旧配置迁移
 │   ├── App.tsx            # 主应用组件
 │   ├── constants.ts       # 常量 (合约地址, ABI 等)
 │   ├── index.css          # 全局样式
