@@ -10,8 +10,8 @@ import { AnalysisResult, LogEntry, DiscoveredAsset, WalletBalances } from './typ
 import { ANALYSIS_OPTIONS } from './constants';
 
 const App: React.FC = () => {
-  const [address, setAddress] = useState(storage.getItem('userAddress') || '');
-  const [rpcUrl, setRpcUrl] = useState(storage.getItem('rpcUrl') || 'https://rpc.ankr.com/eth');
+  const [address, setAddress] = useState(() => storage.getItem('userAddress') || '');
+  const [rpcUrl, setRpcUrl] = useState(() => storage.getItem('rpcUrl') || 'https://rpc.ankr.com/eth');
   const [days, setDays] = useState(() => {
       const saved = storage.getItem('analysisDays');
       return saved ? parseInt(saved, 10) : 7;
@@ -42,7 +42,7 @@ const App: React.FC = () => {
     wasLoading.current = loading;
   }, [loading]);
 
-  // Persist address and rpcUrl to localStorage on change
+  // Persist wallet address, RPC URL, and analysis days to cookies on change.
   useEffect(() => {
     storage.setItem('userAddress', address);
   }, [address]);
